@@ -1,0 +1,30 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "⚡️ deploy contract",
+      "type": "shell",
+      "command": "yarn deploy --network ${input:network} --contract ${input:contract}",
+      "problemMatcher": []
+    },
+    {
+      "label": "🪐 deploy full contract cluster",
+      "type": "shell",
+      "command": "yarn deploy:all --network ${input:network}",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "network",
+      "description": "Network Name (eg goerli, eth)",
+      "default": "goerli",
+      "type": "promptString"
+    },
+    {
+      "id": "contract",
+      "description": "contract name (eg MyContract)",
+      "type": "promptString"
+    }
+  ]
+}

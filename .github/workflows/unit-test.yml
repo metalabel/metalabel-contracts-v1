@@ -1,0 +1,16 @@
+name: metalabel-contracts-test
+on: [push]
+jobs:
+  unit-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 14
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --prefer-offline
+      - name: Build artifacts
+        run: yarn build
+      - name: Run unit tests
+        run: yarn test

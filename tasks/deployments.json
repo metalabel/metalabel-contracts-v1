@@ -1,0 +1,27 @@
+{
+  "eth": {
+    "buildTeamMultisig": "0xdaC29cE30195C6F6e5DF548f4dE89650dF090cA1",
+    "SplitMain": "0x2ed6c4B5dA6378c7897AC67Ba9e43102Feb694EE",
+    "WaterfallModuleFactory": "0x4Df01754eBd055498C8087b1e9a5c7a9ad19b0F6",
+    "AccountRegistry": "0x8384cDfeA9be2e06fE702338089b42CFFcc09D13",
+    "NodeRegistry": "0x6E88E3165aBBe59Ec23076896b0e9D14bEfB941b",
+    "Collection": "0x294B8645C0ff67E116064F3D24F31e6F70b6391e",
+    "CollectionFactory": "0x04EB487f00dE0B9BcCD5ceAECCF6A290B3F54392",
+    "DropEngine": "0xA5c08bD40C717acF009b1c152039910Ac2273389",
+    "SplitFactory": "0x9db31cDd7408dB343d22faFe71b05CC178019251",
+    "WaterfallFactory": "0x92587c36430ba85d9E2f431e50275584B7929DF2"
+  },
+  "goerli": {
+    "buildTeamMultisig": "0xEBFB9A5C5b72c5e565c85Af910e765CF87Ac50DE",
+    "SplitMain": "0x2ed6c4B5dA6378c7897AC67Ba9e43102Feb694EE",
+    "WaterfallModuleFactory": "0x4Df01754eBd055498C8087b1e9a5c7a9ad19b0F6",
+    "AccountRegistry": "0x2a585f746A4dD851D4330539ec5056dD727E59F5",
+    "NodeRegistry": "0x4f7426F75a5f8c862421fA9f4CEb5829e7Ae419B",
+    "Collection": "0x13d14D01D7F8F1D94783Bb1881F649c33B5f462E",
+    "CollectionFactory": "0xb4cdC6a4B338C251FB818398AdA5748037A07C69",
+    "DropEngine": "0xDC9bec0EF694C8CDE9119ec37a008C32D61daEeB",
+    "TestEngine": "0x7663DFD86fd185f518C2CBebBe06bf7F0538EB13",
+    "SplitFactory": "0xe3B6EC832C3F24dD4Ae3c6512A6d287169DFCa8F",
+    "WaterfallFactory": "0xdf3e512345Ee66f57704C26ec294A4b789fFc326"
+  }
+}
