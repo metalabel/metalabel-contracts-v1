@@ -18,16 +18,44 @@ task("deploy", "Deploy a contract")
     const entries = await readDeploymentsFile();
     switch (contract) {
       case "AccountRegistry":
-        constructorArguments.push(entries[network.name]?.buildTeamMultisig);
-        break;
-      case "NodeRegistry":
-        constructorArguments.push(entries[network.name]?.AccountRegistry);
+        constructorArguments.push(entries[network.name]?.adminAddress);
         break;
       case "CollectionFactory":
         constructorArguments.push(
           entries[network.name]?.NodeRegistry,
           entries[network.name]?.Collection
         );
+        break;
+      case "ControllerV1":
+        constructorArguments.push(
+          entries[network.name]?.NodeRegistry,
+          entries[network.name]?.AccountRegistry,
+          entries[network.name]?.CollectionFactory,
+          entries[network.name]?.MembershipsFactory,
+          entries[network.name]?.adminAddress
+        );
+        break;
+      case "DropEngineV2":
+        constructorArguments.push(
+          entries[network.name]?.adminAddress,
+          entries[network.name]?.NodeRegistry
+        );
+        break;
+      case "MembershipsFactory":
+        constructorArguments.push(
+          entries[network.name]?.NodeRegistry,
+          entries[network.name]?.Memberships
+        );
+        break;
+      case "RevenueModuleFactory":
+        constructorArguments.push(
+          entries[network.name]?.NodeRegistry,
+          entries[network.name]?.SplitMain,
+          entries[network.name]?.WaterfallModuleFactory
+        );
+        break;
+      case "NodeRegistry":
+        constructorArguments.push(entries[network.name]?.AccountRegistry);
         break;
       case "SplitFactory":
         constructorArguments.push(

@@ -17,14 +17,26 @@
   "inputs": [
     {
       "id": "network",
-      "description": "Network Name (eg goerli, eth)",
-      "default": "goerli",
-      "type": "promptString"
+      "type": "pickString",
+      "description": "Network name",
+      "options": ["goerli", "eth"],
+      "default": "goerli"
     },
     {
       "id": "contract",
-      "description": "contract name (eg MyContract)",
-      "type": "promptString"
+      "type": "pickString",
+      "description": "Contract name",
+      "options": [
+        "AccountRegistry",
+        "NodeRegistry",
+        "Collection",
+        "Memberships",
+        "DropEngineV2",
+        "CollectionFactory",
+        "MembershipsFactory",
+        "RevenueModuleFactory",
+        "ControllerV1",
+      ],
     }
   ]
 }
