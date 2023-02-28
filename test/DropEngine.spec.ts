@@ -1,4 +1,4 @@
-import { ethers } from "hardhat";
+import { ethers, waffle } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { expect } from "chai";
 
@@ -13,8 +13,11 @@ import {
 } from "../typechain-types";
 import { BigNumber, constants, utils } from "ethers";
 import { defaultAbiCoder, parseUnits } from "ethers/lib/utils";
+import { createCreateCollectionConfig } from "./_fixtures";
 
-describe("CollectionFactory.sol", () => {
+const { loadFixture } = waffle;
+
+describe("DropEngine.sol", () => {
   // ---
   // fixtures
   // ---
@@ -27,7 +30,7 @@ describe("CollectionFactory.sol", () => {
   let accounts: SignerWithAddress[];
   let a0: string, a1: string, a2: string, a3: string;
 
-  beforeEach(async () => {
+  async function fixture() {
     Collection = (await ethers.getContractFactory(
       "Collection"
     )) as Collection__factory;
@@ -57,21 +60,26 @@ describe("CollectionFactory.sol", () => {
     // standard setup
     await accountRegistry.createAccount(a0, "");
     await nodeRegistry.createNode(1, 1, 0, 0, [], "metalabel 1");
+  }
+
+  beforeEach(async () => {
+    await loadFixture(fixture);
   });
 
   const createCollection = async (
     name = "Test",
     symbol = "TEST",
-    controlNode = 1,
+    controlNodeId = 1,
     owner = a0
   ): Promise<Collection> => {
-    const trx = await factory.createCollection(
+    const trx = await factory.createCollection({
+      ...createCreateCollectionConfig(),
       name,
       symbol,
-      controlNode,
+      controlNodeId,
       owner,
-      "collectionURI"
-    );
+    });
+
     const mined = await trx.wait();
     const address = mined.events?.[2].args?.collection;
     const collection = Collection.attach(address);
@@ -168,6 +176,20 @@ describe("CollectionFactory.sol", () => {
       await expect(
         dropEngine.mint(collection.address, 1, { value: parseUnits("1") })
       ).to.be.revertedWith("IncorrectPaymentAmount");
+    });
+    it("should revert if royalty bps is too high", async () => {
+      const collection = await createCollection();
+      // no revert
+      await collection.configureSequence(
+        { ...seqConfig() },
+        encodeDropEngineData(parseUnits("0.01"), 10000, a1, "ipfs://Qm/")
+      );
+      await expect(
+        collection.configureSequence(
+          { ...seqConfig() },
+          encodeDropEngineData(parseUnits("0.01"), 10001, a1, "ipfs://Qm/")
+        )
+      ).to.be.revertedWith("InvalidRoyaltyBps");
     });
     it("should allow for free drops", async () => {
       const collection = await createCollection();
@@ -307,5 +329,21 @@ describe("CollectionFactory.sol", () => {
     await expect(
       minter.mint(dropEngine.address, collection.address, 1)
     ).to.be.revertedWith("MinterMustBeEOA");
+  });
+  it("should revert if revenue cannot be forwarded", async () => {
+    const collection = await createCollection();
+    const price = parseUnits("0.01");
+    const MockBrokenRecipient = await ethers.getContractFactory(
+      "MockBrokenRecipient"
+    );
+    const mock = await MockBrokenRecipient.deploy();
+
+    await collection.configureSequence(
+      { ...seqConfig() },
+      encodeDropEngineData(price, 500, mock.address, "ipfs://Qm/")
+    );
+    await expect(
+      dropEngine.mint(collection.address, 1, { value: price })
+    ).to.be.revertedWith("CouldNotTransferEth");
   });
 });

@@ -1,4 +1,4 @@
-import { ethers } from "hardhat";
+import { ethers, waffle } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { expect } from "chai";
 import {
@@ -8,6 +8,8 @@ import {
 } from "../typechain-types";
 import { constants } from "ethers";
 import { createCreateNode } from "./_fixtures";
+
+const { loadFixture } = waffle;
 
 describe("Resource.sol", () => {
   // ---
@@ -21,7 +23,7 @@ describe("Resource.sol", () => {
   let a0: string, a1: string, a2: string, a3: string;
   let createNode: ReturnType<typeof createCreateNode>;
 
-  beforeEach(async () => {
+  async function fixture() {
     const MockResource = await ethers.getContractFactory("MockResource");
     const AccountRegistry = await ethers.getContractFactory("AccountRegistry");
     const NodeRegistry = await ethers.getContractFactory("NodeRegistry");
@@ -35,6 +37,10 @@ describe("Resource.sol", () => {
     accounts = await ethers.getSigners();
     [a0, a1, a2, a3] = accounts.map((a) => a.address);
     createNode = createCreateNode(accounts, nodeRegistry);
+  }
+
+  beforeEach(async () => {
+    await loadFixture(fixture);
   });
 
   // ---
@@ -48,12 +54,11 @@ describe("Resource.sol", () => {
 
     await resource.broadcast("test", "message");
   });
-  it("should allow broadcasting and storing", async () => {
-    await accountRegistry.createAccount(a0, "");
+  it("should expose isAuthorized", async () => {
+    await accountRegistry.createAccount(a0, ""); // 1
     await createNode({ owner: 1 }); // 1
     await resource.setup(nodeRegistry.address, 1);
-
-    await resource.broadcastAndStore("test", "message");
-    expect(await resource.messageStorage("test")).to.equal("message");
+    expect(await resource.isAuthorized(a0)).to.equal(true);
+    expect(await resource.isAuthorized(a1)).to.equal(false);
   });
 });

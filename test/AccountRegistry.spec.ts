@@ -1,9 +1,11 @@
-import { ethers } from "hardhat";
+import { ethers, waffle } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { expect } from "chai";
 
 import { AccountRegistry, AccountRegistry__factory } from "../typechain-types";
 import { constants } from "ethers";
+
+const { loadFixture } = waffle;
 
 describe("AccountRegistry.sol", () => {
   // ---
@@ -15,13 +17,17 @@ describe("AccountRegistry.sol", () => {
   let accounts: SignerWithAddress[];
   let a0: string, a1: string, a2: string, a3: string;
 
-  beforeEach(async () => {
+  async function fixture() {
     AccountRegistry = (await ethers.getContractFactory(
       "AccountRegistry"
     )) as AccountRegistry__factory;
     registry = await AccountRegistry.deploy(constants.AddressZero);
     accounts = await ethers.getSigners();
     [a0, a1, a2, a3] = accounts.map((a) => a.address);
+  }
+
+  beforeEach(async () => {
+    await loadFixture(fixture);
   });
 
   // ---
@@ -50,7 +56,7 @@ describe("AccountRegistry.sol", () => {
   it("should allow owner to transfer account", async () => {
     await registry.createAccount(a0, "");
     await registry.transferAccount(a1);
-    expect(await registry.resolveId(a0)).to.equal(0);
+    expect(await registry.unsafeResolveId(a0)).to.equal(0);
     expect(await registry.resolveId(a1)).to.equal(1);
   });
   it("should revert if non-account attempting to transfer", async () => {

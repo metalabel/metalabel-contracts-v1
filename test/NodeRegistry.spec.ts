@@ -1,14 +1,12 @@
-import { ethers } from "hardhat";
+import { ethers, waffle } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { expect } from "chai";
 
-import {
-  AccountRegistry,
-  NodeRegistry,
-  MockNodeCreator,
-} from "../typechain-types";
+import { AccountRegistry, NodeRegistry } from "../typechain-types";
 import { constants } from "ethers";
 import { createCreateNode } from "./_fixtures";
+
+const { loadFixture } = waffle;
 
 describe("NodeRegistry.sol", () => {
   // ---
@@ -21,7 +19,7 @@ describe("NodeRegistry.sol", () => {
   let a0: string, a1: string, a2: string, a3: string;
   let createNode: ReturnType<typeof createCreateNode>;
 
-  beforeEach(async () => {
+  async function fixture() {
     const AccountRegistry = await ethers.getContractFactory("AccountRegistry");
     const NodeRegistry = await ethers.getContractFactory("NodeRegistry");
     accountRegistry = (await AccountRegistry.deploy(
@@ -33,6 +31,10 @@ describe("NodeRegistry.sol", () => {
     accounts = await ethers.getSigners();
     [a0, a1, a2, a3] = accounts.map((a) => a.address);
     createNode = createCreateNode(accounts, nodeRegistry);
+  }
+
+  beforeEach(async () => {
+    await loadFixture(fixture);
   });
 
   // ---
@@ -80,10 +82,10 @@ describe("NodeRegistry.sol", () => {
         "InvalidNodeCreate"
       );
     });
-    it("should revert if owner is not msg.sender", async () => {
+    it("should revert if msg.sender does not have an account", async () => {
       await accountRegistry.createAccount(a0, "");
       await expect(createNode({ owner: 1 }, accounts[1])).to.be.revertedWith(
-        "NotAuthorizedForNode"
+        "NoAccount"
       );
     });
     it("should revert if group node is invalid", async () => {
@@ -96,6 +98,13 @@ describe("NodeRegistry.sol", () => {
       await accountRegistry.createAccount(a0, "");
       await expect(createNode({ owner: 1, parent: 10 })).to.be.revertedWith(
         "InvalidNodeCreate"
+      );
+    });
+    it("should revert if node owner does not match msg.sender", async () => {
+      await accountRegistry.createAccount(a0, ""); // 1
+      await accountRegistry.createAccount(a1, ""); // 2
+      await expect(createNode({ owner: 2 })).to.be.revertedWith(
+        "NotAuthorizedForNode"
       );
     });
   });
@@ -139,6 +148,13 @@ describe("NodeRegistry.sol", () => {
         false
       );
       expect(await nodeRegistry.isAuthorizedAccountForNode(1, 2)).to.equal(
+        false
+      );
+    });
+    it("should return false if zero account is passed", async () => {
+      await accountRegistry.createAccount(a0, "");
+      await createNode({ owner: 1 });
+      expect(await nodeRegistry.isAuthorizedAccountForNode(1, 0)).to.equal(
         false
       );
     });
@@ -327,6 +343,7 @@ describe("NodeRegistry.sol", () => {
   describe("setController", () => {
     it("should revert if msg.sender is not node owner or group owner", async () => {
       await accountRegistry.createAccount(a0, ""); // 1
+      await accountRegistry.createAccount(a1, ""); // 2
       await createNode({ owner: 1 }); // 1
       await expect(
         nodeRegistry.connect(accounts[1]).setController(1, a2, true)
@@ -350,22 +367,23 @@ describe("NodeRegistry.sol", () => {
     });
   });
 
-  describe("broadcastAndStore", async () => {
-    it("should allow authorized msgsender to broadcast and store for node", async () => {
+  describe("node access control edge cases", () => {
+    it("should not allow node ownership to be cleared by a msg.sender with no account", async () => {
       await accountRegistry.createAccount(a0, ""); // 1
-      await createNode({ owner: 1 }); // 1
-      await nodeRegistry.broadcastAndStore(1, "topic", "message");
-      expect(await nodeRegistry.messageStorage(1, "topic")).to.equal("message");
-    });
-    it("should revert if non authorized msgsender attempts to broadcast", async () => {
-      await accountRegistry.createAccount(a0, ""); // 1
-      await accountRegistry.createAccount(a1, ""); // 2
       await createNode({ owner: 1 }); // 1
       await expect(
-        nodeRegistry
-          .connect(accounts[1])
-          .broadcastAndStore(1, "topic", "message")
-      ).to.be.revertedWith("NotAuthorizedForNode");
+        nodeRegistry.connect(accounts[1]).completeNodeOwnerTransfer(1)
+      ).to.be.revertedWith("NoAccount");
+    });
+    it("should not allow starting node transfer by a msg.sender with no account for a node with no owner that has a group node with no owner", async () => {
+      await accountRegistry.createAccount(a0, ""); // 1
+      await createNode({ owner: 1 }); // 1
+      await createNode({ owner: 1, groupNode: 1 }); // 2
+      await nodeRegistry.removeNodeOwner(1);
+      await nodeRegistry.removeNodeOwner(2);
+      await expect(
+        nodeRegistry.connect(accounts[1]).startNodeOwnerTransfer(2, 1234)
+      ).to.be.revertedWith("NoAccount");
     });
   });
 });

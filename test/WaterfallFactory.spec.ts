@@ -1,4 +1,4 @@
-import { ethers } from "hardhat";
+import { ethers, waffle } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 
 import {
@@ -11,6 +11,8 @@ import { expect } from "chai";
 import { constants } from "ethers";
 import { parseEther } from "ethers/lib/utils";
 import { createCreateNode } from "./_fixtures";
+
+const { loadFixture } = waffle;
 
 describe("WaterfallFactory.sol", () => {
   // ---
@@ -25,7 +27,7 @@ describe("WaterfallFactory.sol", () => {
   let a0: string, a1: string, a2: string, a3: string;
   let createNode: ReturnType<typeof createCreateNode>;
 
-  beforeEach(async () => {
+  async function fixture() {
     MockWaterfallModuleFactory = (await ethers.getContractFactory(
       "MockWaterfallModuleFactory"
     )) as MockWaterfallModuleFactory__factory;
@@ -53,6 +55,10 @@ describe("WaterfallFactory.sol", () => {
     // standard setup
     await accountRegistry.createAccount(a0, "");
     await createNode({ owner: 1 });
+  }
+
+  beforeEach(async () => {
+    await loadFixture(fixture);
   });
 
   // ---

@@ -1,4 +1,4 @@
-import { ethers } from "hardhat";
+import { ethers, waffle } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 
 import {
@@ -10,6 +10,8 @@ import {
 import { expect } from "chai";
 import { constants } from "ethers";
 import { createCreateNode } from "./_fixtures";
+
+const { loadFixture } = waffle;
 
 describe("SplitFactory.sol", () => {
   // ---
@@ -24,7 +26,7 @@ describe("SplitFactory.sol", () => {
   let a0: string, a1: string, a2: string, a3: string;
   let createNode: ReturnType<typeof createCreateNode>;
 
-  beforeEach(async () => {
+  async function fixture() {
     MockSplitMain = (await ethers.getContractFactory(
       "MockSplitMain"
     )) as MockSplitMain__factory;
@@ -50,6 +52,10 @@ describe("SplitFactory.sol", () => {
     // standard setup
     await accountRegistry.createAccount(a0, "");
     await createNode({ owner: 1 });
+  }
+
+  beforeEach(async () => {
+    await loadFixture(fixture);
   });
 
   // ---
@@ -94,23 +100,10 @@ describe("SplitFactory.sol", () => {
       const split = await deploy();
       await factory.broadcast(split, "topic", "message");
     });
-    it("should allow broadcasting and storing", async () => {
-      const split = await deploy();
-      await factory.broadcastAndStore(split, "topic", "message");
-      expect(await factory.messageStorage(split, "topic")).to.equal("message");
-    });
     it("should revert if attempting to broadcast on an unmanaged resource", async () => {
       const split = await deploy();
       await expect(
         factory.connect(accounts[1]).broadcast(split, "topic", "message")
-      ).to.be.revertedWith("NotAuthorized");
-    });
-    it("should revert if attempting to broadcast and store on an unmanaged resource", async () => {
-      const split = await deploy();
-      await expect(
-        factory
-          .connect(accounts[1])
-          .broadcastAndStore(split, "topic", "message")
       ).to.be.revertedWith("NotAuthorized");
     });
   });

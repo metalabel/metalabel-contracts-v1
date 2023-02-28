@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.17;
 
-import {Resource} from "../Resource.sol";
+import {Resource, AccessControlData} from "../Resource.sol";
 import {INodeRegistry} from "../interfaces/INodeRegistry.sol";
 
 contract MockResource is Resource {
@@ -12,15 +12,9 @@ contract MockResource is Resource {
     uint64 private _controlNode;
 
     function setup(INodeRegistry _registry, uint64 nodeId) external {
-        _nodeRegistry = _registry;
-        _controlNode = nodeId;
-    }
-
-    function nodeRegistry() public view override returns (INodeRegistry) {
-        return _nodeRegistry;
-    }
-
-    function controlNode() public view override returns (uint64) {
-        return _controlNode;
+        accessControl = AccessControlData({
+            nodeRegistry: _registry,
+            controlNodeId: nodeId
+        });
     }
 }
