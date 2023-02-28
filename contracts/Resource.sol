@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.17;
 
 /*
 
@@ -37,35 +37,39 @@ https://metalabel.xyz
 import {IResource} from "./interfaces/IResource.sol";
 import {INodeRegistry} from "./interfaces/INodeRegistry.sol";
 
-/// @notice Minimal abstract implementation of a resource that can be cataloged
-/// on the Metalabel protocol.
-/// @dev Inheritting contracts must implement reading storage for controlNode
-/// and nodeRegistry
-abstract contract Resource is IResource {
+/// @notice Data stored for handling access control resolution.
+struct AccessControlData {
+    INodeRegistry nodeRegistry;
+    uint64 controlNodeId;
+    // 4 bytes remaining
+}
+
+/// @notice A resource that can be cataloged on the Metalabel protocol.
+contract Resource is IResource {
     // ---
     // Errors
     // ---
 
-    /// @notice Unauthorized msg.sender attempted to interact with this collection
+    /// @notice Unauthorized msg.sender attempted to interact with this resource
     error NotAuthorized();
 
     // ---
     // Storage
     // ---
 
-    /// @inheritdoc IResource
-    mapping(string => string) public messageStorage;
+    /// @notice Access control data for this resource.
+    AccessControlData public accessControl;
 
     // ---
     // Modifiers
     // ---
 
-    /// @dev Make a function only callable by a msg.sender that is authorized
-    /// to manage the control node of this resource
+    /// @dev Make a function only callable by a msg.sender that is authorized to
+    /// manage the control node of this resource
     modifier onlyAuthorized() {
         if (
-            !nodeRegistry().isAuthorizedAddressForNode(
-                controlNode(),
+            !accessControl.nodeRegistry.isAuthorizedAddressForNode(
+                accessControl.controlNodeId,
                 msg.sender
             )
         ) {
@@ -86,22 +90,30 @@ abstract contract Resource is IResource {
         emit Broadcast(topic, message);
     }
 
-    /// @inheritdoc IResource
-    function broadcastAndStore(string calldata topic, string calldata message)
-        external
-        onlyAuthorized
-    {
-        messageStorage[topic] = message;
-        emit Broadcast(topic, message);
-    }
-
     // ---
     // Resource views
     // ---
 
     /// @inheritdoc IResource
-    function nodeRegistry() public view virtual returns (INodeRegistry);
+    function nodeRegistry() external view virtual returns (INodeRegistry) {
+        return accessControl.nodeRegistry;
+    }
 
     /// @inheritdoc IResource
-    function controlNode() public view virtual returns (uint64 nodeId);
+    function controlNode() external view virtual returns (uint64 nodeId) {
+        return accessControl.controlNodeId;
+    }
+
+    /// @inheritdoc IResource
+    function isAuthorized(address subject)
+        public
+        view
+        virtual
+        returns (bool authorized)
+    {
+        authorized = accessControl.nodeRegistry.isAuthorizedAddressForNode(
+            accessControl.controlNodeId,
+            subject
+        );
+    }
 }

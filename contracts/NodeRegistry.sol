@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.17;
 
 /*
 
@@ -35,16 +35,15 @@ https://metalabel.xyz
 */
 
 import {AccountRegistry} from "./AccountRegistry.sol";
-import {INodeRegistry, NodeData} from "./interfaces/INodeRegistry.sol";
+import {INodeRegistry, NodeType, NodeData} from "./interfaces/INodeRegistry.sol";
 
 /// @notice The node registry maintains a tree of ownable nodes that are used to
 /// catalog logical entities and manage access control in the Metalabel
 /// universe.
-/// - Nodes anchor metadata for logical entites
+/// - Nodes anchor metadata for logical entities
 /// - Nodes express a logical hierarchy between entities
 /// - Nodes have access control semantics that can be used to determine
 ///     authorization around various actions
-/// - Nodes anchor broadcast messages and stored strings
 contract NodeRegistry is INodeRegistry {
     // ---
     // Events
@@ -53,7 +52,7 @@ contract NodeRegistry is INodeRegistry {
     /// @notice A new node was created.
     event NodeCreated(
         uint64 indexed id,
-        uint16 indexed nodeType,
+        NodeType indexed nodeType,
         uint64 indexed owner,
         uint64 parent,
         uint64 groupNode,
@@ -89,7 +88,8 @@ contract NodeRegistry is INodeRegistry {
     // Errors
     // ---
 
-    /// @notice An unauthorized agent attempted to modify or create a child node.
+    /// @notice An unauthorized agent attempted to modify or create a child
+    /// node.
     error NotAuthorizedForNode();
 
     /// @notice An invalid config was provided during node creation.
@@ -112,10 +112,6 @@ contract NodeRegistry is INodeRegistry {
     /// nodes or manage existing nodes.
     /// @dev nodeId => address => isAuthorized
     mapping(uint64 => mapping(address => bool)) public controllers;
-
-    /// @notice Mapping from node IDs to stored messages.
-    /// @dev nodeId => topic => message
-    mapping(uint64 => mapping(string => string)) public messageStorage;
 
     /// @notice Mapping from a node ID to its pending transfer owner
     mapping(uint64 => uint64) public pendingNodeOwnerTransfers;
@@ -146,7 +142,7 @@ contract NodeRegistry is INodeRegistry {
 
     /// @inheritdoc INodeRegistry
     function createNode(
-        uint16 nodeType,
+        NodeType nodeType,
         uint64 owner,
         uint64 parent,
         uint64 groupNode,
@@ -154,16 +150,17 @@ contract NodeRegistry is INodeRegistry {
         string memory metadata
     ) external returns (uint64 id) {
         // nodeType > 0 is used to check if a node exists
-        if (nodeType == 0) revert InvalidNodeCreate();
+        if (nodeType == NodeType.INVALID_NODE_TYPE) revert InvalidNodeCreate();
 
-        // If owner is set, it must be msg.sender.
+        // If owner is set, it must be msg.sender. If msg.sender does not have
+        // an account, resolveId will revert
         if (owner != 0 && owner != accounts.resolveId(msg.sender)) {
             revert NotAuthorizedForNode();
         }
 
         if (parent != 0) {
             // Ensure parent node exists
-            if (nodes[parent].nodeType == 0) {
+            if (nodes[parent].nodeType == NodeType.INVALID_NODE_TYPE) {
                 revert InvalidNodeCreate();
             }
             // Ensure msg.sender is authorized to manage the parent node.
@@ -174,7 +171,7 @@ contract NodeRegistry is INodeRegistry {
 
         if (groupNode != 0) {
             // Ensure group node exists
-            if (nodes[groupNode].nodeType == 0) {
+            if (nodes[groupNode].nodeType == NodeType.INVALID_NODE_TYPE) {
                 revert InvalidNodeCreate();
             }
             // Ensure msg.sender is authorized to manage the group node.
@@ -205,11 +202,13 @@ contract NodeRegistry is INodeRegistry {
     // Node management
     // ---
 
-    /// @notice Allow the owner of a node to reliquish ownership.
+    /// @notice Allow the owner of a node to relinquish ownership.
     function removeNodeOwner(uint64 id) external {
         NodeData memory node = nodes[id];
         uint64 accountId = accounts.resolveId(msg.sender);
 
+        // If this node has an owner, it must be msg.sender. If msg.sender does
+        // not have an account, resolveId will revert above
         if (node.owner != accountId) {
             revert NotAuthorizedForNode();
         }
@@ -226,7 +225,8 @@ contract NodeRegistry is INodeRegistry {
         NodeData memory node = nodes[id];
         uint64 accountId = accounts.resolveId(msg.sender);
 
-        // If this node has an owner, it must be msg.sender
+        // If this node has an owner, it must be msg.sender. If msg.sender does
+        // not have an account, resolveId will revert above
         if (node.owner != 0 && node.owner != accountId) {
             revert NotAuthorizedForNode();
         }
@@ -251,7 +251,11 @@ contract NodeRegistry is INodeRegistry {
         uint64 newOwner = pendingNodeOwnerTransfers[id];
         uint64 accountId = accounts.resolveId(msg.sender);
 
-        if (newOwner != accountId) revert NotAuthorizedForNode();
+        // Ensure msg.sender is the new account owner. If msg.sender does not
+        // have an account, resolveId will revert
+        if (newOwner != accountId) {
+            revert NotAuthorizedForNode();
+        }
 
         nodes[id].owner = newOwner;
         delete pendingNodeOwnerTransfers[id];
@@ -272,8 +276,8 @@ contract NodeRegistry is INodeRegistry {
     }
 
     /// @notice Modify a node's group node. Msg.sender must be authorized to
-    /// manage the node AND authorized to manage the new group node.
-    /// group node.  This is a restrictive check, but creative use of future
+    /// manage the node AND authorized to manage the new group node.  group
+    /// node.  This is a restrictive check, but creative use of future
     /// controllers can make it easier to re-parent a node
     function setNodeGroupNode(uint64 id, uint64 groupNode)
         external
@@ -292,17 +296,6 @@ contract NodeRegistry is INodeRegistry {
         string calldata message
     ) external onlyAuthorized(id) {
         emit NodeBroadcast(id, topic, message);
-    }
-
-    /// @notice Broadcast and write to contract storage an arbitrary event from
-    /// a node. Msg.sender must be authorized to manage the node
-    function broadcastAndStore(
-        uint64 id,
-        string calldata topic,
-        string calldata message
-    ) external onlyAuthorized(id) {
-        emit NodeBroadcast(id, topic, message);
-        messageStorage[id][topic] = message;
     }
 
     /// @notice Set or remove an address as a node controller. Msg.sender must
@@ -353,7 +346,7 @@ contract NodeRegistry is INodeRegistry {
         NodeData memory mnode = nodes[node];
 
         // Ensure invalid account or invalid node is always NOT authorized.
-        if (account == 0 || mnode.nodeType == 0) {
+        if (account == 0 || mnode.nodeType == NodeType.INVALID_NODE_TYPE) {
             isAuthorized = false;
         }
         // If this node is directly owned by the account, then it's authorized.
@@ -377,7 +370,7 @@ contract NodeRegistry is INodeRegistry {
         returns (bool isAuthorized)
     {
         NodeData memory mnode = nodes[node];
-        uint64 account = accounts.resolveId(subject);
+        uint64 account = accounts.unsafeResolveId(subject);
 
         // invalid or root node has no authorized addresses
         if (node == 0) {
@@ -404,6 +397,6 @@ contract NodeRegistry is INodeRegistry {
             isAuthorized = true;
         }
 
-        // Otherise, not authorized.
+        // Otherwise, not authorized.
     }
 }

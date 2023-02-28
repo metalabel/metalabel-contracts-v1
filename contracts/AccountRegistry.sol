@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.17;
 
 /*
 
@@ -41,7 +41,10 @@ import {IAccountRegistry} from "./interfaces/IAccountRegistry.sol";
 /// ID.
 /// - Accounts are identified by a uint64 ID
 /// - Accounts are owned by an address
-/// - Accounts can broadcast arbitrary strings, keyed by a topic, as blockchain events
+/// - Accounts can broadcast arbitrary strings, keyed by a topic, as blockchain
+///   events
+/// - Account issuance starts permissioned, but can be made permanently public
+///   once the contract owner is removed
 contract AccountRegistry is IAccountRegistry, Owned {
     // ---
     // Events
@@ -58,9 +61,10 @@ contract AccountRegistry is IAccountRegistry, Owned {
     event AccountBroadcast(uint64 indexed id, string topic, string message);
 
     /// @notice An account's address has changed
-    event AccountTransfered(uint64 indexed id, address newOwner);
+    event AccountTransferred(uint64 indexed id, address newOwner);
 
-    /// @notice A new address has be authorized or un-authorized to issue accounts
+    /// @notice A new address has been authorized or un-authorized to issue
+    /// accounts
     event AccountIssuerSet(address indexed issuer, bool authorized);
 
     // ---
@@ -127,6 +131,13 @@ contract AccountRegistry is IAccountRegistry, Owned {
             revert NotAuthorizedAccountIssuer();
         }
 
+        // We don't care who msg.sender is if account issuance is open. This
+        // means that anyone can create an account on behalf of another user,
+        // but this has no security implications. Interacting with the protocol
+        // still needs to come from the correct address, accounts in a way are
+        // mostly to establish an abstraction around identity and reduce storage
+        // costs.
+
         id = ++totalAccountCount;
         accountIds[subject] = id;
         emit AccountCreated(id, subject, metadata);
@@ -137,6 +148,9 @@ contract AccountRegistry is IAccountRegistry, Owned {
     // ---
 
     /// @notice Broadcast a message as an account.
+    /// @dev This has no onchain functionality - it's a way to allow accounts to
+    /// emit information on the blockchain that can be indexed and used in
+    /// external applications.
     function broadcast(string calldata topic, string calldata message)
         external
     {
@@ -155,7 +169,7 @@ contract AccountRegistry is IAccountRegistry, Owned {
 
         accountIds[newOwner] = id;
         delete accountIds[msg.sender];
-        emit AccountTransfered(id, newOwner);
+        emit AccountTransferred(id, newOwner);
     }
 
     // ---
@@ -164,6 +178,16 @@ contract AccountRegistry is IAccountRegistry, Owned {
 
     /// @inheritdoc IAccountRegistry
     function resolveId(address subject) external view returns (uint64 id) {
+        id = accountIds[subject];
+        if (id == 0) revert NoAccount();
+    }
+
+    /// @inheritdoc IAccountRegistry
+    function unsafeResolveId(address subject)
+        external
+        view
+        returns (uint64 id)
+    {
         id = accountIds[subject];
     }
 }

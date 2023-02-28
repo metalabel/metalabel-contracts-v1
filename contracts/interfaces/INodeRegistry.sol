@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.17;
+
+enum NodeType {
+    INVALID_NODE_TYPE,
+    METALABEL,
+    RELEASE
+}
 
 /// @notice Data stored per node.
 struct NodeData {
-    uint16 nodeType;
+    NodeType nodeType;
     uint64 owner;
     uint64 parent;
     uint64 groupNode;
-    // 6 bytes remaining
+    // 7 bytes remaining
 }
 
 /// @notice The node registry maintains a tree of ownable nodes that are used to
@@ -19,7 +25,7 @@ interface INodeRegistry {
     /// expresses the entity relationship.  Child nodes can only be created if
     /// msg.sender is an authorized manager of the parent node.
     function createNode(
-        uint16 nodeType,
+        NodeType nodeType,
         uint64 owner,
         uint64 parent,
         uint64 groupNode,
@@ -38,4 +44,7 @@ interface INodeRegistry {
         external
         view
         returns (bool isAuthorized);
+
+    /// @notice Resolve node owner account.
+    function ownerOf(uint64 id) external view returns (uint64);
 }

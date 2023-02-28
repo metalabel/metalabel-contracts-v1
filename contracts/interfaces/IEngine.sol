@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.17;
 
 /// @notice Data stored in the collection for each sequence.
 /// @dev We could use smaller ints for timestamps and supply, but we'd still be
@@ -10,6 +10,7 @@ struct SequenceData {
     uint64 sealedAfterTimestamp;
     uint64 maxSupply;
     uint64 minted;
+    // ^ 1 word
     IEngine engine;
     uint64 dropNodeId;
     // 4 bytes remaining

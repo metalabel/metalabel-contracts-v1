@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.17;
 
 import {INodeRegistry} from "./INodeRegistry.sol";
 
@@ -15,18 +15,14 @@ interface IResource {
     /// @notice Return the control node ID for this resource.
     function controlNode() external view returns (uint64 nodeId);
 
-    /// @notice Return any stored broadcasts for a given topic.
-    function messageStorage(string calldata topic)
+    /// @notice Return true if the given address is authorized to manage this
+    /// resource.
+    function isAuthorized(address subject)
         external
         view
-        returns (string memory message);
+        returns (bool authorized);
 
     /// @notice Emit an on-chain message. msg.sender must be authorized to
     /// manage this resource's control node
     function broadcast(string calldata topic, string calldata message) external;
-
-    /// @notice Emit an on-chain message and write to contract storage.
-    /// msg.sender must be authorized to manage the resource's control node
-    function broadcastAndStore(string calldata topic, string calldata message)
-        external;
 }

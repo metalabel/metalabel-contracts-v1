@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.17;
 
 /*
 
@@ -82,7 +82,7 @@ contract SplitFactory is ResourceFactory {
     }
 
     // ---
-    // Public funcionality
+    // Public functionality
     // ---
 
     /// @notice Launch a new split

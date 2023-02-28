@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.17;
 
 /*
 
@@ -35,14 +35,21 @@ https://metalabel.xyz
 */
 
 import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
-import {IERC721} from "@openzeppelin/contracts/interfaces/IERC721.sol";
 import {IERC2981} from "@openzeppelin/contracts/interfaces/IERC2981.sol";
-import {Clone} from "clones-with-immutable-args/Clone.sol";
 import {ERC721} from "@metalabel/solmate/src/tokens/ERC721.sol";
+import {SSTORE2} from "@metalabel/solmate/src/utils/SSTORE2.sol";
 import {INodeRegistry} from "./interfaces/INodeRegistry.sol";
 import {IEngine, SequenceData} from "./interfaces/IEngine.sol";
 import {ICollection} from "./interfaces/ICollection.sol";
-import {Resource} from "./Resource.sol";
+import {Resource, AccessControlData} from "./Resource.sol";
+
+/// @notice Immutable data stored per-collection.
+/// @dev This is stored via SSTORE2 to save gas.
+struct ImmutableCollectionData {
+    string name;
+    string symbol;
+    string contractURI;
+}
 
 /// @notice Collections are ERC721 contracts that contain records.
 /// - Minting logic, tokenURI, and royalties are delegated to an external engine
@@ -51,8 +58,7 @@ import {Resource} from "./Resource.sol";
 ///     stored in the collection
 /// - Multiple sequences can be configured for a single collection, records may
 ///     be rendered and minted in a variety of different ways
-/// - This contract is deployed as an immutable cloned proxy by CollectionFactory
-contract Collection is ERC721, Resource, Clone, ICollection, IERC2981 {
+contract Collection is ERC721, Resource, ICollection, IERC2981 {
     // ---
     // Errors
     // ---
@@ -60,16 +66,19 @@ contract Collection is ERC721, Resource, Clone, ICollection, IERC2981 {
     /// @notice The init function was called more than once.
     error AlreadyInitialized();
 
-    /// @notice A record mint attempt was made for a sequence that is currently sealed.
+    /// @notice A record mint attempt was made for a sequence that is currently
+    /// sealed.
     error SequenceIsSealed();
 
-    /// @notice A record mint attempt was made for a sequence that has no remaining supply.
+    /// @notice A record mint attempt was made for a sequence that has no
+    /// remaining supply.
     error SequenceSupplyExhausted();
 
     /// @notice An invalid sequence config was provided during configuration.
     error InvalidSequenceConfig();
 
-    /// @notice msg.sender during a mint call did not match expected engine origin.
+    /// @notice msg.sender during a mint call did not match expected engine
+    /// origin.
     error InvalidMintRequest();
 
     // ---
@@ -113,11 +122,12 @@ contract Collection is ERC721, Resource, Clone, ICollection, IERC2981 {
     /// node.
     address public owner;
 
-    /// @notice Information about each sequence.
-    mapping(uint16 => SequenceData) public sequences;
+    /// @notice The SSTORE2 storage pointer for immutable collection data.
+    /// @dev This data is exposed through name, symbol, and contractURI views
+    address internal immutableStoragePointer;
 
-    /// @notice Set true once a clone has been initialized.
-    bool private initialized;
+    /// @notice Information about each sequence.
+    mapping(uint16 => SequenceData) internal sequences;
 
     // ---
     // Constructor
@@ -126,8 +136,14 @@ contract Collection is ERC721, Resource, Clone, ICollection, IERC2981 {
     /// @dev Constructor only called during deployment of the implementation,
     /// all storage should be set up in init function which is called atomically
     /// after clone deployment
-    constructor() ERC721("Collection", "COLLECTION") {
-        initialized = true;
+    constructor() {
+        // Write dummy data to the immutable storage pointer to prevent
+        // initialization of the implementation contract.
+        immutableStoragePointer = SSTORE2.write(
+            abi.encode(
+                ImmutableCollectionData({name: "", symbol: "", contractURI: ""})
+            )
+        );
     }
 
     // ---
@@ -135,34 +151,27 @@ contract Collection is ERC721, Resource, Clone, ICollection, IERC2981 {
     // ---
 
     /// @notice Initialize contract state.
-    /// @dev Should be called immediately after deploying the clone in the same transaction.
+    /// @dev Should be called immediately after deploying the clone in the same
+    /// transaction.
     function init(
-        string calldata _name,
-        string calldata _symbol,
         address _owner,
-        string calldata _contractURI
+        AccessControlData calldata _accessControl,
+        string calldata _metadata,
+        ImmutableCollectionData calldata _data
     ) external {
-        if (initialized) revert AlreadyInitialized();
-        initialized = true;
-
-        // Set immutable collection data, not using clone-with-immutable args
-        // here, variable length CWIA data is a bit more complex
-        name = _name;
-        symbol = _symbol;
+        if (immutableStoragePointer != address(0)) revert AlreadyInitialized();
+        immutableStoragePointer = SSTORE2.write(abi.encode(_data));
 
         // Set ERC721 market interop.
         owner = _owner;
         emit OwnershipTransferred(address(0), owner);
 
-        // The collection URI is stored and broadcast on metadata topic. Not
-        // using broadcastAndStore method for this since msg.sender is not the
-        // owner of the control node (its CollectionFactory at this point)
-        messageStorage["metadata"] = _contractURI;
-        emit Broadcast("metadata", _contractURI);
+        // Assign access control data.
+        accessControl = _accessControl;
 
-        // Control node and node registry reference are not part of init data,
-        // they are set as part of the clone-with-immutable-args data and are
-        // immutable.
+        // This memberships collection is a resource that can be cataloged -
+        // emit the initial metadata value
+        emit Broadcast("metadata", _metadata);
     }
 
     // ---
@@ -170,6 +179,8 @@ contract Collection is ERC721, Resource, Clone, ICollection, IERC2981 {
     // ---
 
     /// @notice Change the owner address of this collection.
+    /// @dev This is only here for market interop, access control is handled via
+    /// the control node.
     function setOwner(address _owner) external onlyAuthorized {
         address previousOwner = owner;
         owner = _owner;
@@ -183,15 +194,33 @@ contract Collection is ERC721, Resource, Clone, ICollection, IERC2981 {
         SequenceData calldata _sequence,
         bytes calldata _engineData
     ) external onlyAuthorized {
-        // The drop this sequence is associated with must be managaeable by
-        // msg.sender.
+        // The drop this sequence is associated with must be manageable by
+        // msg.sender. This is in addition to the onlyAuthorized modifier which
+        // asserts msg.sender can manage the control node of the whole
+        // collection.
+        // msg.sender is either a metalabel admin EOA, or a controller contract
+        // that has been authorized to do drops on the drop node.
         if (
-            !nodeRegistry().isAuthorizedAddressForNode(
+            !accessControl.nodeRegistry.isAuthorizedAddressForNode(
                 _sequence.dropNodeId,
                 msg.sender
             )
         ) {
             revert NotAuthorized();
+        }
+
+        // If there is sealedAfter timestamp (i.e timebound sequence), ensure
+        // that sealedBefore is strictly less than sealedAfter AND that
+        // sealedAfter occurs strictly in the future. If sealedAfter is zero,
+        // there is no time limit. We are allowing cases where sealedBefore
+        // occurs in the past.
+        if (
+            _sequence.sealedAfterTimestamp > 0 &&
+            (_sequence.sealedBeforeTimestamp >=
+                _sequence.sealedAfterTimestamp ||
+                _sequence.sealedAfterTimestamp <= block.timestamp)
+        ) {
+            revert InvalidSequenceConfig();
         }
 
         // Prevent having a minted count before the sequence starts. This
@@ -206,6 +235,7 @@ contract Collection is ERC721, Resource, Clone, ICollection, IERC2981 {
             revert InvalidSequenceConfig();
         }
 
+        // Write sequence data to storage
         uint16 sequenceId = ++sequenceCount;
         sequences[sequenceId] = _sequence;
         emit SequenceConfigured(sequenceId, _sequence, _engineData);
@@ -253,10 +283,13 @@ contract Collection is ERC721, Resource, Clone, ICollection, IERC2981 {
 
     /// @dev Ensure a given sequence is valid to mint into by the current msg.sender
     function _validateSequence(SequenceData memory sequence) internal view {
-        // Ensure that only the engine for this sequence can mint records.
+        // Ensure that only the engine for this sequence can mint records. Mint
+        // transactions termiante on the engine side - the engine then invokes
+        // the mint functions on the Collection.
         if (sequence.engine != IEngine(msg.sender)) {
             revert InvalidMintRequest();
         }
+
         // Ensure that mint is not happening before or after allowed window.
         if (
             block.timestamp < sequence.sealedBeforeTimestamp ||
@@ -265,6 +298,7 @@ contract Collection is ERC721, Resource, Clone, ICollection, IERC2981 {
         ) {
             revert SequenceIsSealed();
         }
+
         // Ensure we have remaining supply to mint
         if (sequence.maxSupply > 0 && sequence.minted >= sequence.maxSupply) {
             revert SequenceSupplyExhausted();
@@ -272,25 +306,32 @@ contract Collection is ERC721, Resource, Clone, ICollection, IERC2981 {
     }
 
     // ---
-    // IResource views
+    // ICollection views
     // ---
 
-    /// @inheritdoc Resource
-    function nodeRegistry() public pure override returns (INodeRegistry nodes) {
-        // The first of the immutable args written to code during clone deployment
-        nodes = INodeRegistry(_getArgAddress(0));
-    }
-
-    /// @inheritdoc Resource
-    function controlNode() public pure override returns (uint64 nodeId) {
-        // Second of the immutable args written to code during clone deployment,
-        // 20 byte offset since first immutable arg is an address
-        nodeId = _getArgUint64(20);
+    /// @inheritdoc ICollection
+    function getSequenceData(uint16 sequenceId)
+        external
+        view
+        override
+        returns (SequenceData memory sequence)
+    {
+        sequence = sequences[sequenceId];
     }
 
     // ---
-    // ERC721 functionality
+    // ERC721 views
     // ---
+
+    /// @notice The collection name.
+    function name() public view virtual returns (string memory value) {
+        value = _resolveImmutableStorage().name;
+    }
+
+    /// @notice The collection symbol.
+    function symbol() public view virtual returns (string memory value) {
+        value = _resolveImmutableStorage().symbol;
+    }
 
     /// @inheritdoc ERC721
     /// @dev Resolve token URI from the engine powering the sequence.
@@ -305,9 +346,9 @@ contract Collection is ERC721, Resource, Clone, ICollection, IERC2981 {
         uri = engine.getTokenURI(address(this), tokenId);
     }
 
-    /// @notice Get the collection URI from resource storage.
-    function contractURI() public view virtual returns (string memory uri) {
-        uri = messageStorage["metadata"];
+    /// @notice Get the contract URI.
+    function contractURI() public view virtual returns (string memory value) {
+        value = _resolveImmutableStorage().contractURI;
     }
 
     // ---
@@ -324,6 +365,8 @@ contract Collection is ERC721, Resource, Clone, ICollection, IERC2981 {
     }
 
     /// @inheritdoc ICollection
+    /// @dev Token mint data is either edition number or arbitrary custom data
+    /// passed in the by the engine at mint-time.
     function tokenMintData(uint256 tokenId)
         external
         view
@@ -363,5 +406,21 @@ contract Collection is ERC721, Resource, Clone, ICollection, IERC2981 {
         return
             interfaceId == type(IERC2981).interfaceId ||
             super.supportsInterface(interfaceId);
+    }
+
+    // ---
+    // Internal views
+    // ---
+
+    /// @dev Read name/symbol/contractURI strings via SSTORE2.
+    function _resolveImmutableStorage()
+        internal
+        view
+        returns (ImmutableCollectionData memory data)
+    {
+        data = abi.decode(
+            SSTORE2.read(immutableStoragePointer),
+            (ImmutableCollectionData)
+        );
     }
 }

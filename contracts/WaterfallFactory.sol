@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.17;
 
 /*
 
@@ -55,7 +55,7 @@ contract WaterfallFactory is ResourceFactory {
     // Events
     // ---
 
-    /// @notice A new split was deployed.
+    /// @notice A new waterfall was deployed.
     event WaterfallCreated(
         address indexed waterfall,
         uint64 nodeId,
@@ -70,7 +70,7 @@ contract WaterfallFactory is ResourceFactory {
     // Storage
     // ---
 
-    /// @notice The 0xSplit factory contract.
+    /// @notice The 0xSplit factory contract for waterfalls.
     IWaterfallModuleFactory public immutable waterfallFactory;
 
     // ---
@@ -85,10 +85,10 @@ contract WaterfallFactory is ResourceFactory {
     }
 
     // ---
-    // Public funcionality
+    // Public functionality
     // ---
 
-    /// @notice Launch a new split
+    /// @notice Launch a new waterfall
     function createWaterfall(
         address token,
         address nonWaterfallRecipient,
@@ -104,7 +104,7 @@ contract WaterfallFactory is ResourceFactory {
             revert NotAuthorized();
         }
 
-        // Deploy and store the split.
+        // Deploy and store the waterfall.
         waterfall = waterfallFactory.createWaterfallModule(
             token,
             nonWaterfallRecipient,

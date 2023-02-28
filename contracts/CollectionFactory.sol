@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.17;
 
 /*
 
@@ -34,14 +34,23 @@ https://metalabel.xyz
 
 */
 
-import {ClonesWithImmutableArgs} from "clones-with-immutable-args/ClonesWithImmutableArgs.sol";
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {INodeRegistry} from "./interfaces/INodeRegistry.sol";
-import {Collection} from "./Collection.sol";
+import {Collection, ImmutableCollectionData} from "./Collection.sol";
+import {AccessControlData} from "./Resource.sol";
+
+/// @notice Configuration data required when deploying a new collection.
+struct CreateCollectionConfig {
+    string name;
+    string symbol;
+    string contractURI;
+    address owner;
+    uint64 controlNodeId;
+    string metadata;
+}
 
 /// @notice A factory that deploys record collections.
 contract CollectionFactory {
-    using ClonesWithImmutableArgs for address;
-
     // ---
     // Errors
     // ---
@@ -54,11 +63,7 @@ contract CollectionFactory {
     // ---
 
     /// @notice A new collection was deployed
-    event CollectionCreated(
-        address indexed collection,
-        string name,
-        string symbol
-    );
+    event CollectionCreated(address indexed collection);
 
     // ---
     // Storage
@@ -80,25 +85,39 @@ contract CollectionFactory {
     }
 
     // ---
-    // Public funcionality
+    // Public functionality
     // ---
 
     /// @notice Deploy a new collection.
-    function createCollection(
-        string calldata name,
-        string calldata symbol,
-        uint64 controlNode,
-        address owner,
-        string calldata collectionURI
-    ) external returns (Collection collection) {
-        // msg.sender must be authorized to manage the control node
-        if (!nodeRegistry.isAuthorizedAddressForNode(controlNode, msg.sender)) {
+    function createCollection(CreateCollectionConfig calldata config)
+        external
+        returns (Collection collection)
+    {
+        // msg.sender must be authorized to manage the control node of the new
+        // collection
+        if (
+            !nodeRegistry.isAuthorizedAddressForNode(
+                config.controlNodeId,
+                msg.sender
+            )
+        ) {
             revert NotAuthorized();
         }
 
-        bytes memory data = abi.encodePacked(nodeRegistry, controlNode);
-        collection = Collection(address(implementation).clone(data));
-        collection.init(name, symbol, owner, collectionURI);
-        emit CollectionCreated(address(collection), name, symbol);
+        collection = Collection(Clones.clone(address(implementation)));
+        collection.init(
+            config.owner,
+            AccessControlData({
+                nodeRegistry: nodeRegistry,
+                controlNodeId: config.controlNodeId
+            }),
+            config.metadata,
+            ImmutableCollectionData({
+                name: config.name,
+                symbol: config.symbol,
+                contractURI: config.contractURI
+            })
+        );
+        emit CollectionCreated(address(collection));
     }
 }

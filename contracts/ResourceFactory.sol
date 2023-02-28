@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.17;
 
 /*
 
@@ -44,15 +44,13 @@ abstract contract ResourceFactory is IResourceFactory {
     // Errors
     // ---
 
-    /// @notice Unauthorized msg.sender attempted to interact with this collection
+    /// @notice Unauthorized msg.sender attempted to interact with this
+    /// collection
     error NotAuthorized();
 
     // ---
     // Storage
     // ---
-
-    /// @inheritdoc IResourceFactory
-    mapping(address => mapping(string => string)) public messageStorage;
 
     /// @inheritdoc IResourceFactory
     INodeRegistry public immutable nodeRegistry;
@@ -72,8 +70,8 @@ abstract contract ResourceFactory is IResourceFactory {
     // Modifiers
     // ---
 
-    /// @dev Make a function only callable by a msg.sender that is authorized
-    /// to manage the control node of this resource
+    /// @dev Make a function only callable by a msg.sender that is authorized to
+    /// manage the control node of this resource
     modifier onlyAuthorized(address resource) {
         if (
             !nodeRegistry.isAuthorizedAddressForNode(
@@ -92,20 +90,10 @@ abstract contract ResourceFactory is IResourceFactory {
 
     /// @inheritdoc IResourceFactory
     function broadcast(
-        address waterfall,
+        address resource,
         string calldata topic,
         string calldata message
-    ) external onlyAuthorized(waterfall) {
-        emit ResourceBroadcast(waterfall, topic, message);
-    }
-
-    /// @inheritdoc IResourceFactory
-    function broadcastAndStore(
-        address waterfall,
-        string calldata topic,
-        string calldata message
-    ) external onlyAuthorized(waterfall) {
-        messageStorage[waterfall][topic] = message;
-        emit ResourceBroadcast(waterfall, topic, message);
+    ) external onlyAuthorized(resource) {
+        emit ResourceBroadcast(resource, topic, message);
     }
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.17;
 
 /*
 
@@ -45,7 +45,7 @@ import {LibString} from "@metalabel/solmate/src/utils/LibString.sol";
 struct DropData {
     uint80 price;
     uint16 royaltyBps;
-    address payable revenueRecipient;
+    address revenueRecipient;
     // no bytes left
 }
 
@@ -65,6 +65,9 @@ contract DropEngine is IEngine {
     /// @notice If price or recipient is zero, they both have to be zero
     error InvalidPriceOrRecipient();
 
+    /// @notice An invalid value was used for the royalty bps.
+    error InvalidRoyaltyBps();
+
     /// @notice A permissioned mint or attempt to remove the mint authority was
     /// sent from an invalid msg.sender
     error NotMintAuthority();
@@ -77,13 +80,16 @@ contract DropEngine is IEngine {
     /// @notice Public mints must come from an EOA and not a smart contract
     error MinterMustBeEOA();
 
+    /// @notice Unable to forward ETH to the revenue recipient
+    error CouldNotTransferEth();
+
     // ---
     // Events
     // ---
 
     /// @notice A new drop was created.
     /// @dev The collection already emits a SequenceCreated event, we're
-    /// emitting the additonal engine-specific data here.
+    /// emitting the additional engine-specific data here.
     event DropCreated(
         address collection,
         uint16 sequenceId,
@@ -128,16 +134,10 @@ contract DropEngine is IEngine {
         DropData storage drop = drops[address(collection)][sequenceId];
         if (msg.value != drop.price) revert IncorrectPaymentAmount();
 
-        // Check if this sequence is permissioned -- so long as their is a mint
+        // Check if this sequence is permissioned -- so long as there is a mint
         // authority, public mint is not active
         if (mintAuthorities[address(collection)][sequenceId] != address(0)) {
             revert PublicMintNotActive();
-        }
-
-        // Immediately forward payment to the recipient. revenueRecipient could
-        // be a malicious contract but transfer has a 2300 gas limit
-        if (drop.price > 0) {
-            drop.revenueRecipient.transfer(msg.value);
         }
 
         // Collection enforces max mint supply and mint window, so we're not
@@ -147,6 +147,12 @@ contract DropEngine is IEngine {
         // in the engine.  If it's a valid protocol-deployed collection, then it
         // will work as expected.
         tokenId = collection.mintRecord(msg.sender, sequenceId);
+
+        // Forward ETH to the revenue recipient
+        if (drop.price > 0) {
+            (bool success, ) = drop.revenueRecipient.call{value: msg.value}("");
+            if (!success) revert CouldNotTransferEth();
+        }
     }
 
     // ---
@@ -202,7 +208,7 @@ contract DropEngine is IEngine {
         (
             uint80 price,
             uint16 royaltyBps,
-            address payable recipient,
+            address recipient,
             string memory uriPrefix,
             address mintAuthority
         ) = abi.decode(engineData, (uint80, uint16, address, string, address));
@@ -211,6 +217,9 @@ contract DropEngine is IEngine {
         if ((price == 0) != (recipient == address(0))) {
             revert InvalidPriceOrRecipient();
         }
+
+        // Ensure royaltyBps is in range
+        if (royaltyBps > 10000) revert InvalidRoyaltyBps();
 
         // Set the permissioned mint authority if provided
         if (mintAuthority != address(0)) {
@@ -271,7 +280,7 @@ contract DropEngine is IEngine {
         uint256 salePrice
     ) external view override returns (address, uint256) {
         uint16 sequenceId = ICollection(collection).tokenSequenceId(tokenId);
-        DropData memory drop = drops[collection][sequenceId];
+        DropData storage drop = drops[collection][sequenceId];
         return (drop.revenueRecipient, (salePrice * drop.royaltyBps) / 10000);
     }
 }

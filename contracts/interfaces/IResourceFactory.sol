@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity 0.8.17;
 
 import {INodeRegistry} from "./INodeRegistry.sol";
 
@@ -22,24 +22,9 @@ interface IResourceFactory {
         view
         returns (uint64 nodeId);
 
-    /// @notice Return any stored broadcasts for a given resource and topic.
-    function messageStorage(address resource, string calldata topic)
-        external
-        view
-        returns (string memory message);
-
     /// @notice Emit an on-chain message for a given resource. msg.sender must
     /// be authorized to manage the resource's control node.
     function broadcast(
-        address resource,
-        string calldata topic,
-        string calldata message
-    ) external;
-
-    /// @notice Emit an on-chain message and write to contract storage for a
-    /// given resource. msg.sender must be authorized to manage the resource's
-    /// control node.
-    function broadcastAndStore(
         address resource,
         string calldata topic,
         string calldata message
