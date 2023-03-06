@@ -5,6 +5,7 @@ Smart contracts for the Metalabel protocol.
 ## Links
 
 * [Metalabel Protocol Walkthrough](https://metalabel.notion.site/Metalabel-Protocol-Walkthrough-2080c68cc6f242ebb7813b1a9236cab1) - Top-to-bottom conceptual and technical walkthrough of the protocol
+* [Metalabel Protocol Walkthrough: V1.1 Addendum](https://metalabel.notion.site/Metalabel-Protocol-Walkthrough-V1-1-Addendum-3e18e13a1ccc48d68e777956a20279c6) - Covers the changes released as part of a V1.1 iteration
 
 ## Development
 
